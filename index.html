@@ -1281,15 +1281,15 @@ function ItemDetail({ item, goldRate, silverRate, onBack, onSave, onDelete, phot
           )
         ) : memoMode ? (
           React.createElement('div', { style: { display: "flex", gap: 6 },}
-            , React.createElement('button', { onClick: () => requireAuth(() => onMemoRestore(item)), style: { ...btnBase, background: "var(--c-tx-bg)", color: "var(--c-tx-text)", border: "1px solid var(--c-tx-border)", flex: 1, justifyContent: "center" },}, "↩ Restore to Inventory" )
-            , React.createElement('button', { onClick: () => requireAuth(() => setConfirmDelete(true)), style: { ...btnBase, background: "var(--c-danger-bg)", color: "var(--c-danger-text)", border: "1px solid var(--c-danger-brd)", padding: "8px 14px" },}, "🗑 Remove" )
+            , React.createElement('button', { onClick: () => onMemoRestore(item), style: { ...btnBase, background: "var(--c-tx-bg)", color: "var(--c-tx-text)", border: "1px solid var(--c-tx-border)", flex: 1, justifyContent: "center" },}, "↩ Restore to Inventory" )
+            , React.createElement('button', { onClick: () => setConfirmDelete(true), style: { ...btnBase, background: "var(--c-danger-bg)", color: "var(--c-danger-text)", border: "1px solid var(--c-danger-brd)", padding: "8px 14px" },}, "🗑 Remove" )
           )
         ) : (
           React.createElement('div', { style: { display: "flex", gap: 6 },}
             , React.createElement('button', { onClick: () => requireAuth(startEdit), style: { ...btnBase, background: "var(--c-edit-bg)", color: "var(--c-edit-text)", border: "1px solid var(--c-edit-brd)", flex: 1, justifyContent: "center" },}, "✎ Edit" )
             , React.createElement('button', { onClick: () => requireAuth(() => setConfirmDelete(true)), style: { ...btnBase, background: "var(--c-danger-bg)", color: "var(--c-danger-text)", border: "1px solid var(--c-danger-brd)", padding: "8px 14px" },}, "🗑 Delete" )
             , React.createElement('button', { onClick: () => requireAuth(() => onSell(item)), style: { ...btnBase, background: "var(--c-tx-bg)", color: "var(--c-tx-text)", border: "1px solid var(--c-tx-border)", padding: "8px 14px" },}, "💰 Sell" )
-            , React.createElement('button', { onClick: () => requireAuth(() => setConfirmMemo(true)), style: { ...btnBase, background: "var(--c-bg-panel)", color: "var(--c-text-dim)", border: "1px solid var(--c-border2)", padding: "8px 14px" },}, "→ Memo" )
+            , React.createElement('button', { onClick: () => setConfirmMemo(true), style: { ...btnBase, background: "var(--c-bg-panel)", color: "var(--c-text-dim)", border: "1px solid var(--c-border2)", padding: "8px 14px" },}, "→ Memo" )
           )
         )
       )
@@ -2152,9 +2152,10 @@ function StockAnalyzer() {
 
   // ── Reconcile: always apply latest components from code for base items ──
   // This means fixing stale Firebase data on every load — no manual SYNC needed
-  function reconcile(stored) {
+  function reconcile(stored, excludedIds) {
     const baseMap = new Map(ITEMS.map(i => [i.kind + "::" + i.id, i]));
     const storedKeys = new Set(stored.map(i => i.kind + "::" + i.id));
+    const excluded = new Set(excludedIds || []);
     const reconciled = stored
       // Drop items that were removed from base
       .filter(i => BASE_KEYS.has(i.kind + "::" + i.id) || !baseMap.has(i.kind + "::" + i.id))
@@ -2166,8 +2167,8 @@ function StockAnalyzer() {
         if (!i.components || i.components.length === 0) return base;
         return i;
       });
-    // Add new base items not yet in Firebase
-    const newItems = ITEMS.filter(i => !storedKeys.has(i.kind + "::" + i.id));
+    // Add new base items not yet in Firebase — skip deliberately excluded (deleted/memo'd) items
+    const newItems = ITEMS.filter(i => !storedKeys.has(i.kind + "::" + i.id) && !excluded.has(i.kind + "::" + i.id));
     return [...reconciled, ...newItems];
   }
 
@@ -2207,7 +2208,7 @@ function StockAnalyzer() {
   // ── Apply a Firebase snapshot to local state ──────────────────
   function applySnapshot(data) {
     if (!data) return;
-    if (data.items) setItems(reconcile(data.items));
+    if (data.items) setItems(reconcile(data.items, data.deletedBaseIds));
     // Only update gold rate from remote if not mid-save (avoids poll overwriting local edits)
     if (data.goldRate && !isSavingRef.current) setGoldRate(parseFloat(data.goldRate));
     if (data.labourRate && !isSavingRef.current) setLabourRate(parseFloat(data.labourRate));
@@ -2342,6 +2343,11 @@ function StockAnalyzer() {
     isSavingRef.current = true;
     try {
       await fbSet("items", nextItems);
+      if (BASE_KEYS.has(item.kind + "::" + item.id)) {
+        const existing = await fbGet("deletedBaseIds");
+        const updated = [...new Set([...(existing || []), item.kind + "::" + item.id])];
+        await fbSet("deletedBaseIds", updated);
+      }
       await saveMemoItem(item);
       setLastSync(new Date()); setFbError(null);
     } catch (e) { setFbError("Memo save failed"); }
@@ -2355,6 +2361,11 @@ function StockAnalyzer() {
     isSavingRef.current = true;
     try {
       await fbSet("items", nextItems);
+      if (BASE_KEYS.has(restoredItem.kind + "::" + restoredItem.id)) {
+        const existing = await fbGet("deletedBaseIds") || [];
+        const updated = existing.filter(id => id !== restoredItem.kind + "::" + restoredItem.id);
+        await fbSet("deletedBaseIds", updated);
+      }
       await deleteMemoItem(memoId);
       setLastSync(new Date()); setFbError(null);
     } catch (e) { setFbError("Restore failed"); }
@@ -2716,7 +2727,7 @@ function StockAnalyzer() {
         onDelete: deletePurchase,} )
       , showReports && React.createElement(Reports, { sales: sales, purchases: purchases, repairs: repairs, onClose: () => setShowReports(false), onExportSales: exportSalesCSV, onExportPurchases: exportPurchasesCSV,} )
       , selectedMemo && React.createElement(ItemDetail, { item: selectedMemo, goldRate: goldRate, silverRate: silverRate, onBack: () => setSelectedMemo(null), onSave: () => {}, onDelete: handleDeleteMemo, memoMode: true, onMemoRestore: handleRestoreFromMemo, photos: photos, onSavePhoto: handleSavePhoto, requireAuth: requireAuth,} )
-      , showMemo && !selectedMemo && React.createElement(MemoTab, { memo: memo, onClose: () => setShowMemo(false), onSelect: item => setSelectedMemo(item), onRestore: item => requireAuth(() => handleRestoreFromMemo(item)), onDelete: memoId => requireAuth(() => deleteMemoItem(memoId)),} )
+      , showMemo && !selectedMemo && React.createElement(MemoTab, { memo: memo, onClose: () => setShowMemo(false), onSelect: item => setSelectedMemo(item), onRestore: item => handleRestoreFromMemo(item), onDelete: memoId => deleteMemoItem(memoId),} )
       , showAdd && !showSales && !showSellForm && React.createElement(AddItem, { onSave: handleAdd, onCancel: () => setShowAdd(false), existingItems: items, goldRate: goldRate, labourRate: labourRate,} )
       , selected && !showAdd && !showSales && !showSellForm && React.createElement(ItemDetail, { item: selected, goldRate: goldRate, silverRate: silverRate, onBack: () => setSelected(null), onSave: handleSave, onDelete: handleDelete, photos: photos, onSavePhoto: handleSavePhoto, requireAuth: requireAuth, onSell: item => { setSellItem(item); setShowSellForm(true); }, onMemo: handleMemo,} )
 
