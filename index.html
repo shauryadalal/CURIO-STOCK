@@ -2216,6 +2216,7 @@ function StockAnalyzer() {
     // Only update gold rate from remote if not mid-save (avoids poll overwriting local edits)
     if (data.goldRate && !isSavingRef.current) setGoldRate(parseFloat(data.goldRate));
     if (data.labourRate && !isSavingRef.current) setLabourRate(parseFloat(data.labourRate));
+    if (data.silverRate && !isSavingRef.current) setSilverRate(parseFloat(data.silverRate));
     setLastSync(new Date());
   }
   async function loadPhotos() {
@@ -2406,6 +2407,17 @@ function StockAnalyzer() {
     setLabourRate(rate);
     try {
       await fbSet("labourRate", rate);
+      setLastSync(new Date());
+      setFbError(null);
+    } catch(e) {
+      setFbError("Save failed — check Firebase rules");
+    }
+  }
+
+  async function handleSilverRate(rate) {
+    setSilverRate(rate);
+    try {
+      await fbSet("silverRate", rate);
       setLastSync(new Date());
       setFbError(null);
     } catch(e) {
@@ -2800,7 +2812,7 @@ function StockAnalyzer() {
       )
 
       /* Gold Rate Bar */
-      , React.createElement(GoldRateBar, { goldRate: goldRate, setGoldRate: handleGoldRate, silverRate: silverRate, setSilverRate: setSilverRate, labourRate: labourRate, setLabourRate: handleLabourRate,} )
+      , React.createElement(GoldRateBar, { goldRate: goldRate, setGoldRate: handleGoldRate, silverRate: silverRate, setSilverRate: handleSilverRate, labourRate: labourRate, setLabourRate: handleLabourRate,} )
 
       /* Dashboard */
       , React.createElement(Dashboard, { items: items, goldRate: goldRate,} )
