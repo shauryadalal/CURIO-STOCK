@@ -1189,10 +1189,11 @@ function EField({ value, onChange, type = "text", style = {} }) {
 }
 
 // ── Item Detail Screen ─────────────────────────────────────────
-function ItemDetail({ item, goldRate, silverRate, onBack, onSave, onDelete, photos, onSavePhoto, onSell, requireAuth }) {
+function ItemDetail({ item, goldRate, silverRate, onBack, onSave, onDelete, photos, onSavePhoto, onSell, requireAuth, onMemo, memoMode, onMemoRestore }) {
   const [editMode, setEditMode] = useState(false);
   const [draft, setDraft] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmMemo, setConfirmMemo] = useState(false);
   const [metalView, setMetalView] = useState(null); // null | "9K" | "14K" | "18K" | "Silver"
 
   const photoKey = `${item.kind}__${item.id}`;
@@ -1278,11 +1279,17 @@ function ItemDetail({ item, goldRate, silverRate, onBack, onSave, onDelete, phot
             , React.createElement('button', { onClick: saveEdit, style: { ...btnBase, background: "var(--c-tx-btn2)", color: "var(--c-tx-text)", border: "1px solid var(--c-tx-border)", flex: 1, justifyContent: "center" },}, "✓ Save" )
             , React.createElement('button', { onClick: cancelEdit, style: { ...btnBase, background: "var(--c-danger-bg)", color: "var(--c-danger-text)", border: "1px solid var(--c-danger-brd)" },}, "✕ Cancel" )
           )
+        ) : memoMode ? (
+          React.createElement('div', { style: { display: "flex", gap: 6 },}
+            , React.createElement('button', { onClick: () => requireAuth(() => onMemoRestore(item)), style: { ...btnBase, background: "var(--c-tx-bg)", color: "var(--c-tx-text)", border: "1px solid var(--c-tx-border)", flex: 1, justifyContent: "center" },}, "↩ Restore to Inventory" )
+            , React.createElement('button', { onClick: () => requireAuth(() => setConfirmDelete(true)), style: { ...btnBase, background: "var(--c-danger-bg)", color: "var(--c-danger-text)", border: "1px solid var(--c-danger-brd)", padding: "8px 14px" },}, "🗑 Remove" )
+          )
         ) : (
           React.createElement('div', { style: { display: "flex", gap: 6 },}
             , React.createElement('button', { onClick: () => requireAuth(startEdit), style: { ...btnBase, background: "var(--c-edit-bg)", color: "var(--c-edit-text)", border: "1px solid var(--c-edit-brd)", flex: 1, justifyContent: "center" },}, "✎ Edit" )
             , React.createElement('button', { onClick: () => requireAuth(() => setConfirmDelete(true)), style: { ...btnBase, background: "var(--c-danger-bg)", color: "var(--c-danger-text)", border: "1px solid var(--c-danger-brd)", padding: "8px 14px" },}, "🗑 Delete" )
             , React.createElement('button', { onClick: () => requireAuth(() => onSell(item)), style: { ...btnBase, background: "var(--c-tx-bg)", color: "var(--c-tx-text)", border: "1px solid var(--c-tx-border)", padding: "8px 14px" },}, "💰 Sell" )
+            , React.createElement('button', { onClick: () => requireAuth(() => setConfirmMemo(true)), style: { ...btnBase, background: "var(--c-bg-panel)", color: "var(--c-text-dim)", border: "1px solid var(--c-border2)", padding: "8px 14px" },}, "→ Memo" )
           )
         )
       )
@@ -1290,10 +1297,25 @@ function ItemDetail({ item, goldRate, silverRate, onBack, onSave, onDelete, phot
       /* Inline delete confirmation banner */
       , confirmDelete && (
         React.createElement('div', { style: { background: "var(--c-danger-bg)", border: "1px solid var(--c-danger-brd)", borderBottom: "1px solid var(--c-danger-brd)", padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 },}
-          , React.createElement('span', { style: { fontSize: 13, color: "var(--c-danger-text)", fontWeight: 600, flex: 1 },}, "Remove " , React.createElement('strong', null, item.name), " from inventory? This cannot be undone."      )
+          , React.createElement('span', { style: { fontSize: 13, color: "var(--c-danger-text)", fontWeight: 600, flex: 1 },},
+            memoMode
+              ? ["Remove ", React.createElement('strong', null, item.name), " from Memo permanently? This cannot be undone."]
+              : ["Remove ", React.createElement('strong', null, item.name), " from inventory? This cannot be undone."]
+          )
           , React.createElement('div', { style: { display: "flex", gap: 8, flexShrink: 0 },}
             , React.createElement('button', { onClick: () => onDelete(item), style: { ...btnBase, background: "var(--c-danger-bg)", color: "var(--c-danger-text)", border: "1px solid var(--c-danger-brd)", padding: "7px 14px" },}, "Yes, Remove" )
             , React.createElement('button', { onClick: () => setConfirmDelete(false), style: { ...btnBase, background: "var(--c-bg-btn)", color: "var(--c-text-dim)", border: "1px solid var(--c-border2)", padding: "7px 14px" },}, "Cancel")
+          )
+        )
+      )
+
+      /* Inline memo confirmation banner */
+      , confirmMemo && (
+        React.createElement('div', { style: { background: "var(--c-bg-panel)", border: "1px solid var(--c-border2)", borderBottom: "1px solid var(--c-border2)", padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 },}
+          , React.createElement('span', { style: { fontSize: 13, color: "var(--c-text-dim)", fontWeight: 600, flex: 1 },}, "Send " , React.createElement('strong', null, item.name), " to Memo? It will be removed from inventory." )
+          , React.createElement('div', { style: { display: "flex", gap: 8, flexShrink: 0 },}
+            , React.createElement('button', { onClick: () => { setConfirmMemo(false); onMemo(item); }, style: { ...btnBase, background: "var(--c-bg-btn)", color: "var(--c-text-dim)", border: "1px solid var(--c-border2)", padding: "7px 14px" },}, "Yes, Send" )
+            , React.createElement('button', { onClick: () => setConfirmMemo(false), style: { ...btnBase, background: "var(--c-bg-btn)", color: "var(--c-text-dim)", border: "1px solid var(--c-border2)", padding: "7px 14px" },}, "Cancel")
           )
         )
       )
@@ -1318,10 +1340,6 @@ function ItemDetail({ item, goldRate, silverRate, onBack, onSave, onDelete, phot
             , editMode
               ? React.createElement(EField, { value: draft.gross_weight, onChange: v => setDraftField("gross_weight", v), type: "number", style: { fontSize: 18, fontWeight: 800, color: "var(--c-text-h)" },} )
               : React.createElement('div', { style: { fontSize: 20, color: "var(--c-text-h)", fontWeight: 800 },}, working.gross_weight ? `${working.gross_weight} g` : "—")
-          )
-          , React.createElement('div', { style: { textAlign: "right" },}
-            , React.createElement('div', { style: { fontSize: 11, color: "var(--c-comp-sub)", fontWeight: 600, marginBottom: 4, letterSpacing: 1, textTransform: "uppercase" },}, "Base Total" )
-            , React.createElement('div', { style: { fontSize: 18, color: "var(--c-text-h)", fontWeight: 800, fontVariantNumeric: "tabular-nums" },}, fmt(item.total))
           )
         )
 
@@ -1895,6 +1913,40 @@ function AddItem({ onSave, onCancel, existingItems, goldRate, labourRate }) {
   );
 }
 
+// ── MemoTab ────────────────────────────────────────────────────
+function MemoTab({ memo, onClose, onSelect, onRestore, onDelete }) {
+  return (
+    React.createElement('div', { style: { minHeight: "100vh", background: "var(--c-bg)", color: "var(--c-text)", fontFamily: "'Palatino Linotype','Book Antiqua',Palatino,serif", display: "flex", flexDirection: "column" } }
+      , React.createElement(ScreenHeader, { title: "📋 Memo", subtitle: `${memo.length} item${memo.length !== 1 ? "s" : ""}`, onBack: onClose } )
+      , React.createElement('div', { style: { flex: 1, overflowY: "auto", padding: 12 } }
+        , memo.length === 0 && React.createElement('div', { style: { textAlign: "center", color: "var(--c-text-dim)", padding: 40, fontSize: 13 } }, "No memo items yet. Use '→ Memo' on an item to move it here.")
+        , memo.map(item => {
+          const badge = kindBadge[item.kind] || kindBadge.ring;
+          const dateStr = item.memoDate ? new Date(item.memoDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—";
+          return (
+            React.createElement('div', { key: item.memoId, style: { background: "var(--c-bg-header)", border: "1px solid var(--c-border)", borderRadius: 10, padding: "12px 14px", marginBottom: 8 } }
+              , React.createElement('div', { onClick: () => onSelect(item), style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, cursor: "pointer" } }
+                , React.createElement('div', { style: { flex: 1, minWidth: 0 } }
+                  , React.createElement('div', { style: { display: "flex", alignItems: "center", gap: 7, marginBottom: 3 } }
+                    , React.createElement('span', { style: { fontSize: 14, color: "var(--c-text-h)", fontWeight: 700 } }, item.name)
+                    , React.createElement('span', { style: { fontSize: 9, letterSpacing: 1, padding: "2px 7px", borderRadius: 10, background: badge.bg, border: `1px solid ${badge.border}`, color: badge.color, fontWeight: 700, flexShrink: 0 } }, badge.label)
+                  )
+                  , React.createElement('div', { style: { fontSize: 11, color: "var(--c-text-dim)" } }, "Sent: ", dateStr)
+                )
+                , React.createElement('div', { style: { fontSize: 15, color: "var(--c-kind-ring)", fontWeight: 800, fontVariantNumeric: "tabular-nums", flexShrink: 0, marginLeft: 8 } }, fmt(item.total))
+              )
+              , React.createElement('div', { style: { display: "flex", gap: 6 } }
+                , React.createElement('button', { onClick: () => onRestore(item), style: { flex: 1, background: "var(--c-tx-bg)", border: "1px solid var(--c-tx-border)", borderRadius: 7, color: "var(--c-tx-text)", padding: "6px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" } }, "↩ Restore")
+                , React.createElement('button', { onClick: () => onDelete(item.memoId), style: { background: "var(--c-danger-bg)", border: "1px solid var(--c-danger-brd)", borderRadius: 7, color: "var(--c-danger-text)", padding: "6px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" } }, "🗑 Remove")
+              )
+            )
+          );
+        })
+      )
+    )
+  );
+}
+
 function StockAnalyzer() {
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
@@ -1928,6 +1980,9 @@ function StockAnalyzer() {
   const [showPurchases, setShowPurchases] = useState(false);
   const [purchases, setPurchases] = useState([]);
   const [showReports, setShowReports] = useState(false);
+  const [showMemo, setShowMemo] = useState(false);
+  const [memo, setMemo] = useState([]);
+  const [selectedMemo, setSelectedMemo] = useState(null);
   const [activeForm, setActiveForm] = useState(null); // "customer"|"repair"|"purchase"
   const [editRecord, setEditRecord] = useState(null); // fn to call after unlock
 
@@ -1939,6 +1994,7 @@ function StockAnalyzer() {
   const FB_CUSTOMERS = "https://ads-automation-d9560-default-rtdb.asia-southeast1.firebasedatabase.app/curio-customers";
   const FB_REPAIRS = "https://ads-automation-d9560-default-rtdb.asia-southeast1.firebasedatabase.app/curio-repairs";
   const FB_PURCHASES = "https://ads-automation-d9560-default-rtdb.asia-southeast1.firebasedatabase.app/curio-purchases";
+  const FB_MEMO = "https://ads-automation-d9560-default-rtdb.asia-southeast1.firebasedatabase.app/curio-memo";
 
   // ── Firebase helpers ──────────────────────────────────────────
   const fbUrl = p => p ? `${FB}/${p}.json` : `${FB}.json`;
@@ -2072,6 +2128,28 @@ function StockAnalyzer() {
     setPurchases(prev => prev.filter(p => p.id !== id));
   }
 
+  // ── Memo helpers ──────────────────────────────────────────────
+  const fbMemoUrl = id => id ? `${FB_MEMO}/${id}.json` : `${FB_MEMO}.json`;
+  async function loadMemo() {
+    try {
+      const r = await fetch(fbMemoUrl(null));
+      if (r.ok) {
+        const d = await r.json();
+        if (d) setMemo(Object.values(d).sort((a,b) => (b.memoDate||"").localeCompare(a.memoDate||"")));
+      }
+    } catch (e) {}
+  }
+  async function saveMemoItem(item) {
+    const memoId = `memo_${item.kind}_${item.id}`;
+    const rec = { ...item, memoId, memoDate: new Date().toISOString() };
+    await fetch(fbMemoUrl(memoId), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rec) });
+    setMemo(prev => [rec, ...prev.filter(m => m.memoId !== memoId)]);
+  }
+  async function deleteMemoItem(memoId) {
+    await fetch(fbMemoUrl(memoId), { method: "DELETE" });
+    setMemo(prev => prev.filter(m => m.memoId !== memoId));
+  }
+
   // ── Reconcile: always apply latest components from code for base items ──
   // This means fixing stale Firebase data on every load — no manual SYNC needed
   function reconcile(stored) {
@@ -2176,6 +2254,7 @@ function StockAnalyzer() {
       await loadCustomers();
       await loadRepairs();
       await loadPurchases();
+      await loadMemo();
       setSyncing(false);
       setFbError(null);
     }).catch(err => {
@@ -2254,6 +2333,43 @@ function StockAnalyzer() {
       setLastSync(new Date()); setFbError(null);
     } catch (e8) { setFbError("Delete failed"); }
     isSavingRef.current = false;
+  }
+
+  async function handleMemo(item) {
+    const nextItems = items.filter(i => !(i.id === item.id && i.kind === item.kind));
+    setItems(nextItems);
+    setSelected(null);
+    isSavingRef.current = true;
+    try {
+      await fbSet("items", nextItems);
+      await saveMemoItem(item);
+      setLastSync(new Date()); setFbError(null);
+    } catch (e) { setFbError("Memo save failed"); }
+    isSavingRef.current = false;
+  }
+
+  async function handleRestoreFromMemo(memoItem) {
+    const { memoId, memoDate, ...restoredItem } = memoItem;
+    const nextItems = [...items, restoredItem];
+    setItems(nextItems);
+    isSavingRef.current = true;
+    try {
+      await fbSet("items", nextItems);
+      await deleteMemoItem(memoId);
+      setLastSync(new Date()); setFbError(null);
+    } catch (e) { setFbError("Restore failed"); }
+    isSavingRef.current = false;
+    setSelectedMemo(null);
+  }
+
+  async function handleDeleteMemo(memoItem) {
+    isSavingRef.current = true;
+    try {
+      await deleteMemoItem(memoItem.memoId);
+      setLastSync(new Date()); setFbError(null);
+    } catch (e) { setFbError("Delete failed"); }
+    isSavingRef.current = false;
+    setSelectedMemo(null);
   }
 
   async function handleGoldRate(rate) {
@@ -2599,10 +2715,12 @@ function StockAnalyzer() {
         onSave: savePurchase,
         onDelete: deletePurchase,} )
       , showReports && React.createElement(Reports, { sales: sales, purchases: purchases, repairs: repairs, onClose: () => setShowReports(false), onExportSales: exportSalesCSV, onExportPurchases: exportPurchasesCSV,} )
+      , selectedMemo && React.createElement(ItemDetail, { item: selectedMemo, goldRate: goldRate, silverRate: silverRate, onBack: () => setSelectedMemo(null), onSave: () => {}, onDelete: handleDeleteMemo, memoMode: true, onMemoRestore: handleRestoreFromMemo, photos: photos, onSavePhoto: handleSavePhoto, requireAuth: requireAuth,} )
+      , showMemo && !selectedMemo && React.createElement(MemoTab, { memo: memo, onClose: () => setShowMemo(false), onSelect: item => setSelectedMemo(item), onRestore: item => requireAuth(() => handleRestoreFromMemo(item)), onDelete: memoId => requireAuth(() => deleteMemoItem(memoId)),} )
       , showAdd && !showSales && !showSellForm && React.createElement(AddItem, { onSave: handleAdd, onCancel: () => setShowAdd(false), existingItems: items, goldRate: goldRate, labourRate: labourRate,} )
-      , selected && !showAdd && !showSales && !showSellForm && React.createElement(ItemDetail, { item: selected, goldRate: goldRate, silverRate: silverRate, onBack: () => setSelected(null), onSave: handleSave, onDelete: handleDelete, photos: photos, onSavePhoto: handleSavePhoto, requireAuth: requireAuth, onSell: item => { setSellItem(item); setShowSellForm(true); },} )
+      , selected && !showAdd && !showSales && !showSellForm && React.createElement(ItemDetail, { item: selected, goldRate: goldRate, silverRate: silverRate, onBack: () => setSelected(null), onSave: handleSave, onDelete: handleDelete, photos: photos, onSavePhoto: handleSavePhoto, requireAuth: requireAuth, onSell: item => { setSellItem(item); setShowSellForm(true); }, onMemo: handleMemo,} )
 
-      , React.createElement('div', { style: { display: (selected || showAdd || showSales || showSellForm || showCustomers || showRepairs || showPurchases || showReports) ? "none" : "flex", minHeight: "100vh", background: "var(--c-bg)", color: "var(--c-text)", fontFamily: "'Palatino Linotype','Book Antiqua',Palatino,serif", flexDirection: "column" },}
+      , React.createElement('div', { style: { display: (selected || showAdd || showSales || showSellForm || showCustomers || showRepairs || showPurchases || showReports || showMemo || !!selectedMemo) ? "none" : "flex", minHeight: "100vh", background: "var(--c-bg)", color: "var(--c-text)", fontFamily: "'Palatino Linotype','Book Antiqua',Palatino,serif", flexDirection: "column" },}
       /* Header */
       , React.createElement('div', { style: { background: "var(--c-bg-header)", borderBottom: "1px solid var(--c-border)", padding: "16px 16px 12px" },}
         , React.createElement('div', { style: { display: "flex", justifyContent: "space-between", alignItems: "center" },}
@@ -2639,6 +2757,7 @@ function StockAnalyzer() {
         , React.createElement('button', { onClick: () => setShowCustomers(true), style: { background: "var(--c-bg-panel)", border: "1px solid var(--c-border2)", borderRadius: 6, color: "var(--c-text-sub)", padding: "5px 11px", fontSize: 11, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, letterSpacing: 1, flexShrink: 0, whiteSpace: "nowrap" },}, "👥 CLIENTS" )
         , React.createElement('button', { onClick: () => setShowRepairs(true), style: { background: "var(--c-gold-bg)", border: "1px solid var(--c-amb-border)", borderRadius: 6, color: "var(--c-amb-text)", padding: "5px 11px", fontSize: 11, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, letterSpacing: 1, flexShrink: 0, whiteSpace: "nowrap" },}, "🔧 REPAIRS" )
         , React.createElement('button', { onClick: () => setShowPurchases(true), style: { background: "var(--c-blue-bg)", border: "1px solid var(--c-blue-brd)", borderRadius: 6, color: "var(--c-blue-text)", padding: "5px 11px", fontSize: 11, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, letterSpacing: 1, flexShrink: 0, whiteSpace: "nowrap" },}, "📦 BUYS" )
+        , React.createElement('button', { onClick: () => setShowMemo(true), style: { background: "var(--c-bg-panel)", border: "1px solid var(--c-border2)", borderRadius: 6, color: "var(--c-text-dim)", padding: "5px 11px", fontSize: 11, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, letterSpacing: 1, flexShrink: 0, whiteSpace: "nowrap" },}, "📋 MEMO" )
         , React.createElement('button', { onClick: () => setShowReports(true), style: { background: "var(--c-bg-header)", border: "1px solid var(--c-border)", borderRadius: 6, color: "var(--c-text-dim)", padding: "5px 11px", fontSize: 11, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, letterSpacing: 1, flexShrink: 0, whiteSpace: "nowrap" },}, "📊 REPORTS" )
         , React.createElement('button', { onClick: exportInventory, style: { background: "var(--c-bg-panel)", border: "1px solid var(--c-border)", borderRadius: 6, color: "var(--c-text-dim)", padding: "5px 11px", fontSize: 11, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, letterSpacing: 1, flexShrink: 0, whiteSpace: "nowrap" },}, "↓ CSV" )
         , React.createElement('div', { style: { flex: 1 },} )
