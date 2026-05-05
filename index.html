@@ -1478,6 +1478,8 @@ function ItemDetail({ item, goldRate, silverRate, onBack, onSave, onDelete, phot
             { key: "18K",    label: "18KT Gold", color: "#e0c060", border: "#906820", bg: "#241800" },
             { key: "Silver", label: "Silver",    color: "var(--c-blue-text)", border: "var(--c-blue-brd)", bg: "#080c18" },
           ];
+          const metalTotals = {};
+          BTNS.forEach(b => { metalTotals[b.key] = nonGoldCost + goldWeight * metalRates[b.key]; });
           const active = metalView ? BTNS.find(b => b.key === metalView) : null;
           const altMetalCost = active ? goldWeight * metalRates[active.key] : 0;
           const altTotal = active ? nonGoldCost + altMetalCost : 0;
@@ -1488,8 +1490,10 @@ function ItemDetail({ item, goldRate, silverRate, onBack, onSave, onDelete, phot
             , React.createElement('div', { style: { display: "flex", gap: 6, marginBottom: 10 } }
               , BTNS.map(b =>
                 React.createElement('button', { key: b.key, onClick: () => setMetalView(metalView === b.key ? null : b.key),
-                  style: { flex: 1, background: metalView === b.key ? b.bg : "var(--c-bg-btn)", border: `1px solid ${metalView === b.key ? b.border : "var(--c-border2)"}`, borderRadius: 8, color: metalView === b.key ? b.color : "var(--c-text-dim)", fontSize: 10, fontWeight: 700, padding: "7px 4px", cursor: "pointer", fontFamily: "inherit", letterSpacing: 1, lineHeight: 1.3 } }
-                , b.label)
+                  style: { flex: 1, background: metalView === b.key ? b.bg : "var(--c-bg-btn)", border: `1px solid ${metalView === b.key ? b.border : "var(--c-border2)"}`, borderRadius: 8, color: metalView === b.key ? b.color : "var(--c-text-dim)", fontSize: 10, fontWeight: 700, padding: "8px 4px", cursor: "pointer", fontFamily: "inherit", letterSpacing: 1, lineHeight: 1.3, textAlign: "center" } }
+                  , React.createElement('div', { style: { marginBottom: 4 } }, b.label)
+                  , React.createElement('div', { style: { fontSize: 11, fontVariantNumeric: "tabular-nums", fontWeight: 800, letterSpacing: 0 } }, fmt(metalTotals[b.key]))
+                )
               )
             )
             , active && React.createElement('div', { style: { background: active.bg, border: `1px solid ${active.border}`, borderRadius: 12, padding: "14px 16px" } }
