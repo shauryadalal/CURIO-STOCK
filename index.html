@@ -105,6 +105,29 @@ function liveRate(c, rate24K) {
   return rate24K * (c.rate / BASE_24K);
 }
 
+function liveItemTotal(item, rate24K) {
+  const comps = item.components || [];
+  const gnw = comps.filter(c => c.category === "gold").reduce((s, c) => s + (parseFloat(c.weight) || 0), 0);
+  return comps.reduce((sum, c) => {
+    if (c.category === "gold" && c.weight) return sum + c.weight * (rate24K * (c.rate / BASE_24K));
+    if (c.category === "labour" && !c._priceOverride) return sum + gnw * (parseFloat(c.rate) || 1500);
+    return sum + (c.price || 0);
+  }, 0);
+}
+
+function saleSnapshot(components, rate24K) {
+  const gnw = components.filter(c => c.category === "gold")
+    .reduce((s, c) => s + (parseFloat(c.weight) || 0), 0);
+  return components.map(c => ({
+    ...c,
+    price: c.category === "gold" && c.weight
+      ? c.weight * (rate24K * (c.rate / BASE_24K))
+      : c.category === "labour" && !c._priceOverride
+        ? gnw * (parseFloat(c.rate) || 1500)
+        : (c.price || 0),
+  }));
+}
+
 // ── Password Modal ────────────────────────────────────────────
 function PasswordModal({ onSubmit, onCancel, error }) {
   const [val, setVal] = useState("");
@@ -134,9 +157,9 @@ function SellForm({ item, goldRate, onSave, onCancel }) {
     itemName: item ? item.name : "",
     itemId: item ? String(item.id) : "",
     itemKind: item ? item.kind : "",
-    stockPrice: item ? Math.round(item.total) : 0,
+    stockPrice: item ? Math.round(liveItemTotal(item, goldRate)) : 0,
     dateSold: today,
-    finalPrice: item ? Math.round(item.total) : 0,
+    finalPrice: item ? Math.round(liveItemTotal(item, goldRate)) : 0,
     cash: 0,
     bank: 0,
     goldWeight: 0,
@@ -160,7 +183,7 @@ function SellForm({ item, goldRate, onSave, onCancel }) {
           , React.createElement('div', { style: { fontSize: 9, color: "var(--c-tx-text2)", letterSpacing: 3, fontWeight: 700, textTransform: "uppercase" },}, "Record Transaction" )
           , React.createElement('div', { style: { fontSize: 14, color: "var(--c-tx-text)", fontWeight: 700 },}, form.itemName || "New Entry")
         )
-        , React.createElement('button', { onClick: () => onSave(form), style: { background: "var(--c-tx-btn2)", border: "1px solid var(--c-tx-border)", borderRadius: 8, color: "var(--c-tx-text)", padding: "8px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" },}, "✓ Save" )
+        , React.createElement('button', { onClick: () => { const snapped = saleSnapshot(item ? (item.components || []) : [], goldRate); onSave({ ...form, components: snapped, grossWeight: item ? item.gross_weight : null, goldRateAtSale: goldRate }); }, style: { background: "var(--c-tx-btn2)", border: "1px solid var(--c-tx-border)", borderRadius: 8, color: "var(--c-tx-text)", padding: "8px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" },}, "✓ Save" )
       )
       , React.createElement('div', { style: { flex: 1, overflowY: "auto", padding: 16 },}
         /* Type */
@@ -280,7 +303,7 @@ function SellForm({ item, goldRate, onSave, onCancel }) {
 }
 
 // ── Sales Dashboard ────────────────────────────────────────────
-function SalesDashboard({ sales, onClose, onNewEntry, onEditSale, onDeleteSale }) {
+function SalesDashboard({ sales, onClose, onNewEntry, onEditSale, onDeleteSale, onRestoreSale }) {
   const [filter, setFilter] = useState("all");
   const [editId, setEditId] = useState(null);
   const [editDraft, setEditDraft] = useState(null);
@@ -355,6 +378,7 @@ function SalesDashboard({ sales, onClose, onNewEntry, onEditSale, onDeleteSale }
                   )
                   , editId !== s.id && React.createElement('button', { onClick: () => startEdit(s), style: { background: "var(--c-tx-bg)", border: "1px solid var(--c-tx-border)", borderRadius: 6, color: "var(--c-tx-text)", padding: "3px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 } }, "✎")
                   , editId !== s.id && onDeleteSale && React.createElement('button', { onClick: () => { if (window.confirm("Remove this sale entry?")) onDeleteSale(s.id); }, style: { background: "var(--c-danger-bg)", border: "1px solid var(--c-danger-brd)", borderRadius: 6, color: "var(--c-danger-text)", padding: "3px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 } }, "🗑")
+                  , editId !== s.id && s.type === "sale" && onRestoreSale && React.createElement('button', { onClick: () => { if (window.confirm("Restore this item to stock? The sale entry will be deleted.")) onRestoreSale(s); }, style: { background: "var(--c-blue-bg)", border: "1px solid var(--c-blue-brd)", borderRadius: 6, color: "var(--c-blue-text)", padding: "3px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 } }, "↩")
                 )
               )
               , editId === s.id ? (
@@ -385,6 +409,16 @@ function SalesDashboard({ sales, onClose, onNewEntry, onEditSale, onDeleteSale }
                     , parseFloat(s.oldJewelleryValue) > 0 && React.createElement('span', { style: { fontSize: 10, background: "var(--c-other-bg)", border: "1px solid var(--c-border)", borderRadius: 5, padding: "2px 8px", color: "var(--c-text-sub)" },}, "♻️ " , s.oldJewelleryWeight, "g · "  , fmt(s.oldJewelleryValue))
                   )
                   , s.notes ? React.createElement('div', { style: { fontSize: 11, color: "var(--c-text-dim)", marginTop: 6, fontStyle: "italic" },}, s.notes) : null
+                  , s.components && s.components.length > 0 && React.createElement('div', { style: { marginTop: 8, borderTop: "1px solid var(--c-border-dim)", paddingTop: 8 },}
+                    , React.createElement('div', { style: { fontSize: 9, color: "var(--c-text-dim)", letterSpacing: 2, fontWeight: 700, marginBottom: 4, textTransform: "uppercase" },}, "Components")
+                    , s.goldRateAtSale
+                      ? React.createElement('div', { style: { fontSize: 9, color: "var(--c-amb-text2)", marginBottom: 6 } }, "24K Rate: ₹", Math.round(s.goldRateAtSale).toLocaleString("en-IN"), "/g")
+                      : React.createElement('div', { style: { fontSize: 9, color: "var(--c-text-dim)", marginBottom: 6, fontStyle: "italic" } }, "(legacy — prices at stock-entry rate)")
+                    , s.components.map((c, i) => React.createElement('div', { key: i, style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 11, color: "var(--c-text-sub)", marginBottom: 3 },}
+                      , React.createElement('span', null, c.name, (c.weight && c.weight > 0) ? React.createElement('span', { style: { color: "var(--c-text-dim)", marginLeft: 4 },}, c.weight, c.category === "diamond" ? "ct" : "g") : null)
+                      , React.createElement('span', { style: { fontWeight: 700, color: "var(--c-text-sub)", fontVariantNumeric: "tabular-nums" },}, "₹", Math.round(c.price || 0).toLocaleString("en-IN"))
+                    ))
+                  )
                 )
               )
             )
@@ -1200,7 +1234,13 @@ function ItemDetail({ item, goldRate, silverRate, onBack, onSave, onDelete, phot
   const currentPhoto = photos[photoKey] || null;
 
   const working = editMode ? draft : item;
-  const liveComps = working.components.map(c => ({ ...c, livePrice: livePrice(c, goldRate), liveRate: liveRate(c, goldRate) }));
+  const goldNetWeight = working.components.filter(c => c.category === "gold").reduce((s, c) => s + (parseFloat(c.weight) || 0), 0);
+  const liveComps = working.components.map(c => {
+    const lp = (c.category === "labour" && !c._priceOverride)
+      ? parseFloat((goldNetWeight * (parseFloat(c.rate) || 1500)).toFixed(2))
+      : livePrice(c, goldRate);
+    return { ...c, livePrice: lp, liveRate: liveRate(c, goldRate) };
+  });
   const byCategory = liveComps.reduce((acc, c) => { if (!acc[c.category]) acc[c.category] = []; acc[c.category].push(c); return acc; }, {});
   const liveTotal = liveComps.reduce((s, c) => s + (c.livePrice || 0), 0);
   const diff = liveTotal - item.total;
@@ -1532,7 +1572,7 @@ function Dashboard({ items, goldRate }) {
     const byKind = { ring: 0, earring: 0, bracelet: 0, necklace: 0 };
 
     items.forEach(item => {
-      const itemTotal = item.components.reduce((s, c) => s + livePrice(c, goldRate), 0);
+      const itemTotal = liveItemTotal(item, goldRate);
       sellTotal += itemTotal;
       byKind[item.kind] = (byKind[item.kind] || 0) + itemTotal;
 
@@ -2062,6 +2102,33 @@ function StockAnalyzer() {
       await fbSet("items", next);
       isSavingRef.current = false;
     }
+  }
+
+  async function handleRestoreSale(sale) {
+    const restoredItem = {
+      id: /^\d+$/.test(String(sale.itemId)) ? parseInt(sale.itemId) : sale.itemId,
+      kind: sale.itemKind,
+      name: sale.itemName,
+      components: sale.components || [],
+      gross_weight: sale.grossWeight || 0,
+      total: sale.stockPrice || 0,
+    };
+    const next = [...items, restoredItem];
+    setItems(next);
+    isSavingRef.current = true;
+    try {
+      await fbSet("items", next);
+      const key = `${sale.itemKind}::${sale.itemId}`;
+      if (BASE_KEYS.has(key)) {
+        const existing = await fbGet("deletedBaseIds") || [];
+        await fbSet("deletedBaseIds", existing.filter(k => k !== key));
+      }
+      await fetch(fbSalesUrl(sale.id), { method: "DELETE" });
+      setSales(prev => prev.filter(s => s.id !== sale.id));
+      setLastSync(new Date());
+      setFbError(null);
+    } catch(e) { setFbError("Restore failed: " + e.message); }
+    isSavingRef.current = false;
   }
 
   async function updateSale(updated) {
@@ -2728,7 +2795,7 @@ function StockAnalyzer() {
         onCancel: () => { setShowSellForm(false); setSellItem(null); },
         onSave: async form => { try { await saveSale(form); setShowSellForm(false); setSellItem(null); setSelected(null); } catch(e) { setFbError("Sale save failed: " + e.message); } },}
       )
-      , showSales && !showSellForm && React.createElement(SalesDashboard, { sales: sales, onClose: () => setShowSales(false), onNewEntry: () => { setSellItem(null); setShowSellForm(true); }, onEditSale: updateSale, onDeleteSale: deleteSale,} )
+      , showSales && !showSellForm && React.createElement(SalesDashboard, { sales: sales, onClose: () => setShowSales(false), onNewEntry: () => { setSellItem(null); setShowSellForm(true); }, onEditSale: updateSale, onDeleteSale: deleteSale, onRestoreSale: sale => requireAuth(() => handleRestoreSale(sale)),} )
       , showCustomers && React.createElement(CustomerBook, { customers: customers, sales: sales, requireAuth: requireAuth,
         onClose: () => setShowCustomers(false),
         onSave: saveCustomer,
@@ -2850,7 +2917,7 @@ function StockAnalyzer() {
       , viewMode === "list" && (
         React.createElement('div', { style: { flex: 1, overflowY: "auto", overflowX: "hidden", background: "var(--c-bg)" },}
           , filtered.map((item) => {
-            const liveTotal = item.components.reduce((s, c) => s + livePrice(c, goldRate), 0);
+            const liveTotal = liveItemTotal(item, goldRate);
             const rateChanged = goldRate !== BASE_24K;
             const badge = kindBadge[item.kind];
             return (
@@ -2894,7 +2961,7 @@ function StockAnalyzer() {
         React.createElement('div', { style: { flex: 1, overflowY: "auto", overflowX: "hidden", background: "var(--c-bg)", padding: "10px" },}
           , React.createElement('div', { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 },}
             , filtered.map((item) => {
-              const liveTotal = item.components.reduce((s, c) => s + livePrice(c, goldRate), 0);
+              const liveTotal = liveItemTotal(item, goldRate);
               const rateChanged = goldRate !== BASE_24K;
               const badge = kindBadge[item.kind];
               return (
