@@ -167,7 +167,10 @@ function SellForm({ item, goldRate, onSave, onCancel }) {
     goldValue: 0,
     oldJewelleryWeight: 0,
     oldJewelleryValue: 0,
+    discount: 0,
     notes: "",
+    customerName: "",
+    customerPhone: "",
     type: "sale", // sale | return | purchase
   });
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -221,6 +224,10 @@ function SellForm({ item, goldRate, onSave, onCancel }) {
           , React.createElement('div', { style: { fontSize: 10, color: "var(--c-amb-text)", letterSpacing: 2, fontWeight: 700, marginBottom: 10, textTransform: "uppercase" },}, "Final Sale Price"  )
           , React.createElement('input', { type: "number", value: form.finalPrice, onChange: e => f("finalPrice", parseFloat(e.target.value)||0),
             style: { width: "100%", background: "var(--c-amb-bg2)", border: "1px solid var(--c-amb-border)", borderRadius: 6, color: "var(--c-amb-text)", fontSize: 22, fontWeight: 800, padding: "10px 12px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" },} )
+          , React.createElement('div', { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 8 },}
+            , React.createElement('div', { style: { fontSize: 10, color: "var(--c-amb-text2)", whiteSpace: "nowrap" },}, "Discount ₹")
+            , React.createElement('input', { type: "number", value: form.discount||"", onChange: e => f("discount", parseFloat(e.target.value)||0), placeholder: "0", style: { flex: 1, background: "var(--c-amb-bg2)", border: "1px solid var(--c-amb-border)", borderRadius: 6, color: "var(--c-amb-text)", fontSize: 14, padding: "6px 10px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" },})
+          )
           , React.createElement('div', { style: { fontSize: 11, color: form.stockPrice > 0 ? (form.finalPrice >= form.stockPrice ? "var(--c-tx-text)" : "var(--c-danger-text)") : "var(--c-amb-text2)", marginTop: 6 },}
             , form.stockPrice > 0 ? `${form.finalPrice >= form.stockPrice ? "+" : ""}${fmt(form.finalPrice - form.stockPrice)} vs stock price` : ""
           )
@@ -291,6 +298,20 @@ function SellForm({ item, goldRate, onSave, onCancel }) {
             )
           )
         )
+        /* Customer */
+        , React.createElement('div', { style: { marginBottom: 14 },}
+          , React.createElement('div', { style: { fontSize: 10, color: "var(--c-text-dim)", letterSpacing: 2, fontWeight: 700, marginBottom: 6, textTransform: "uppercase" },}, "Customer")
+          , React.createElement('div', { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 },}
+            , React.createElement('div', null
+              , React.createElement('div', { style: { fontSize: 10, color: "var(--c-text-dim)", marginBottom: 4 },}, "Name")
+              , React.createElement('input', { value: form.customerName, onChange: e => f("customerName", e.target.value), placeholder: "Customer name", style: { width: "100%", background: "var(--c-bg-input)", border: "1px solid var(--c-border)", borderRadius: 6, color: "var(--c-text)", fontSize: 13, padding: "8px 10px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" },})
+            )
+            , React.createElement('div', null
+              , React.createElement('div', { style: { fontSize: 10, color: "var(--c-text-dim)", marginBottom: 4 },}, "Phone")
+              , React.createElement('input', { value: form.customerPhone, onChange: e => f("customerPhone", e.target.value), placeholder: "Phone number", type: "tel", style: { width: "100%", background: "var(--c-bg-input)", border: "1px solid var(--c-border)", borderRadius: 6, color: "var(--c-text)", fontSize: 13, padding: "8px 10px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" },})
+            )
+          )
+        )
         /* Notes */
         , React.createElement('div', { style: { marginBottom: 20 },}
           , React.createElement('div', { style: { fontSize: 10, color: "var(--c-text-dim)", letterSpacing: 2, fontWeight: 700, marginBottom: 6, textTransform: "uppercase" },}, "Notes")
@@ -305,10 +326,15 @@ function SellForm({ item, goldRate, onSave, onCancel }) {
 // ── Sales Dashboard ────────────────────────────────────────────
 function SalesDashboard({ sales, onClose, onNewEntry, onEditSale, onDeleteSale, onRestoreSale }) {
   const [filter, setFilter] = useState("all");
+  const [salesSearch, setSalesSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [editId, setEditId] = useState(null);
   const [editDraft, setEditDraft] = useState(null);
   const fmt = n => "₹" + Math.round(n).toLocaleString("en-IN");
-  const filtered = filter === "all" ? sales : sales.filter(s => s.type === filter);
+  const byType = filter === "all" ? sales : sales.filter(s => s.type === filter);
+  const byDate = byType.filter(s => (!dateFrom || (s.dateSold || "") >= dateFrom) && (!dateTo || (s.dateSold || "") <= dateTo));
+  const filtered = salesSearch.trim() ? byDate.filter(s => (s.itemName || "").toLowerCase().includes(salesSearch.toLowerCase()) || (s.customerName || "").toLowerCase().includes(salesSearch.toLowerCase())) : byDate;
   const inpStyle = { width: "100%", background: "var(--c-tx-bg2)", border: "1px solid var(--c-tx-border)", borderRadius: 6, color: "var(--c-text)", fontSize: 12, padding: "5px 8px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" };
   const lblStyle = { fontSize: 9, color: "var(--c-tx-text2)", letterSpacing: 1, fontWeight: 700, marginBottom: 3, textTransform: "uppercase" };
   function startEdit(s) { setEditId(s.id); setEditDraft({ ...s }); }
@@ -351,6 +377,12 @@ function SalesDashboard({ sales, onClose, onNewEntry, onEditSale, onDeleteSale, 
             )
           ))
         )
+        /* Date range + Search */
+        , React.createElement('div', { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 },}
+          , React.createElement('input', { type: "date", value: dateFrom, onChange: e => setDateFrom(e.target.value), style: { width: "100%", background: "var(--c-tx-bg2)", border: "1px solid var(--c-tx-border)", borderRadius: 8, color: dateFrom ? "var(--c-text)" : "var(--c-text-dim)", fontSize: 12, padding: "7px 10px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" },})
+          , React.createElement('input', { type: "date", value: dateTo, onChange: e => setDateTo(e.target.value), style: { width: "100%", background: "var(--c-tx-bg2)", border: "1px solid var(--c-tx-border)", borderRadius: 8, color: dateTo ? "var(--c-text)" : "var(--c-text-dim)", fontSize: 12, padding: "7px 10px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" },})
+        )
+        , React.createElement('input', { value: salesSearch, onChange: e => setSalesSearch(e.target.value), placeholder: "Search by item or customer…", style: { width: "100%", background: "var(--c-tx-bg2)", border: "1px solid var(--c-tx-border)", borderRadius: 8, color: "var(--c-text)", fontSize: 13, padding: "9px 12px", outline: "none", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 10 },})
         /* Filter tabs */
         , React.createElement('div', { style: { display: "flex", gap: 6, marginBottom: 12 },}
           , [["all","All"],["sale","Sales"],["return","Returns"],["purchase","Purchases"]].map(([val, label]) => (
@@ -370,11 +402,12 @@ function SalesDashboard({ sales, onClose, onNewEntry, onEditSale, onDeleteSale, 
                 , React.createElement('div', { style: { flex: 1, minWidth: 0 } }
                   , React.createElement('div', { style: { fontSize: 13, color: "var(--c-text-h)", fontWeight: 700 },}, s.itemName)
                   , React.createElement('div', { style: { fontSize: 10, color: "var(--c-tx-text2)", marginTop: 2 },}, s.dateSold, " · "  , React.createElement('span', { style: { color: s.type==="sale" ? "var(--c-tx-text)" : s.type==="return" ? "var(--c-danger-text)" : "var(--c-blue-text)" },}, s.type))
+                  , s.customerName && React.createElement('div', { style: { fontSize: 10, color: "var(--c-text-sub)", marginTop: 2 },}, "👤 ", s.customerName, s.customerPhone ? ` · ${s.customerPhone}` : "")
                 )
                 , React.createElement('div', { style: { display: "flex", alignItems: "flex-start", gap: 8 } }
                   , React.createElement('div', { style: { textAlign: "right" } }
                     , React.createElement('div', { style: { fontSize: 15, color: "var(--c-tx-text)", fontWeight: 800 },}, fmt(s.finalPrice))
-                    , s.stockPrice > 0 && React.createElement('div', { style: { fontSize: 10, color: (s.finalPrice - s.stockPrice) >= 0 ? "var(--c-tx-text)" : "var(--c-danger-text)" },}, (s.finalPrice - s.stockPrice) >= 0 ? "+" : "", fmt(s.finalPrice - s.stockPrice))
+                    , s.stockPrice > 0 && React.createElement('div', { style: { fontSize: 10, color: (s.finalPrice - s.stockPrice) >= 0 ? "var(--c-tx-text)" : "var(--c-danger-text)" },}, (s.finalPrice - s.stockPrice) >= 0 ? "+" : "", fmt(s.finalPrice - s.stockPrice), " (", (((s.finalPrice - s.stockPrice) / s.stockPrice) * 100).toFixed(1), "%)")
                   )
                   , editId !== s.id && React.createElement('button', { onClick: () => startEdit(s), style: { background: "var(--c-tx-bg)", border: "1px solid var(--c-tx-border)", borderRadius: 6, color: "var(--c-tx-text)", padding: "3px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 } }, "✎")
                   , editId !== s.id && onDeleteSale && React.createElement('button', { onClick: () => { if (window.confirm("Remove this sale entry?")) onDeleteSale(s.id); }, style: { background: "var(--c-danger-bg)", border: "1px solid var(--c-danger-brd)", borderRadius: 6, color: "var(--c-danger-text)", padding: "3px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 } }, "🗑")
@@ -393,6 +426,8 @@ function SalesDashboard({ sales, onClose, onNewEntry, onEditSale, onDeleteSale, 
                     , React.createElement('div', null, React.createElement('div', { style: lblStyle }, "Gold Value ₹"), React.createElement('input', { style: inpStyle, type: "number", value: editDraft.goldValue || "", onChange: e => ef("goldValue", parseFloat(e.target.value)||0) }))
                     , React.createElement('div', null, React.createElement('div', { style: lblStyle }, "Old Jewel Wt (g)"), React.createElement('input', { style: inpStyle, type: "number", value: editDraft.oldJewelleryWeight || "", onChange: e => ef("oldJewelleryWeight", e.target.value) }))
                     , React.createElement('div', { style: { gridColumn: "span 2" } }, React.createElement('div', { style: lblStyle }, "Old Jewel Value ₹"), React.createElement('input', { style: inpStyle, type: "number", value: editDraft.oldJewelleryValue || "", onChange: e => ef("oldJewelleryValue", parseFloat(e.target.value)||0) }))
+                    , React.createElement('div', null, React.createElement('div', { style: lblStyle }, "Customer Name"), React.createElement('input', { style: inpStyle, value: editDraft.customerName || "", onChange: e => ef("customerName", e.target.value) }))
+                    , React.createElement('div', null, React.createElement('div', { style: lblStyle }, "Customer Phone"), React.createElement('input', { style: inpStyle, type: "tel", value: editDraft.customerPhone || "", onChange: e => ef("customerPhone", e.target.value) }))
                     , React.createElement('div', { style: { gridColumn: "span 2" } }, React.createElement('div', { style: lblStyle }, "Notes"), React.createElement('input', { style: inpStyle, value: editDraft.notes || "", onChange: e => ef("notes", e.target.value) }))
                   )
                   , React.createElement('div', { style: { display: "flex", gap: 6 } }
@@ -407,6 +442,7 @@ function SalesDashboard({ sales, onClose, onNewEntry, onEditSale, onDeleteSale, 
                     , parseFloat(s.bank) > 0 && React.createElement('span', { style: { fontSize: 10, background: "var(--c-diamond-bg)", border: "1px solid var(--c-blue-brd)", borderRadius: 5, padding: "2px 8px", color: "var(--c-blue-text)" },}, "🏦 " , fmt(s.bank))
                     , parseFloat(s.goldValue) > 0 && React.createElement('span', { style: { fontSize: 10, background: "var(--c-gold-bg)", border: "1px solid var(--c-amb-border)", borderRadius: 5, padding: "2px 8px", color: "#b07030" },}, "🪙 " , s.goldWeight, "g " , s.goldKarat, "K · "  , fmt(s.goldValue))
                     , parseFloat(s.oldJewelleryValue) > 0 && React.createElement('span', { style: { fontSize: 10, background: "var(--c-other-bg)", border: "1px solid var(--c-border)", borderRadius: 5, padding: "2px 8px", color: "var(--c-text-sub)" },}, "♻️ " , s.oldJewelleryWeight, "g · "  , fmt(s.oldJewelleryValue))
+                    , parseFloat(s.discount) > 0 && React.createElement('span', { style: { fontSize: 10, background: "var(--c-danger-bg)", border: "1px solid var(--c-danger-brd)", borderRadius: 5, padding: "2px 8px", color: "var(--c-danger-text)" },}, "🏷 -" , fmt(s.discount))
                   )
                   , s.notes ? React.createElement('div', { style: { fontSize: 11, color: "var(--c-text-dim)", marginTop: 6, fontStyle: "italic" },}, s.notes) : null
                   , s.components && s.components.length > 0 && React.createElement('div', { style: { marginTop: 8, borderTop: "1px solid var(--c-border-dim)", paddingTop: 8 },}
