@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Curio Stock Intelligence V1.0</title>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <style>
@@ -129,127 +128,6 @@ function saleSnapshot(components, rate24K) {
   }));
 }
 
-// ── Costing: column-detection & parsing ───────────────────────
-const COSTING_FIELDS = [
-  { key: "srCol",           label: "Sr / Row #",        keywords: ["sr","s.no","serial","sl"] },
-  { key: "itemNoCol",       label: "Item No",            keywords: ["item no","item_no","style no","ref no","article"] },
-  { key: "itemNameCol",     label: "Design / Name",      keywords: ["design","item name","style","description","name"] },
-  { key: "metalCol",        label: "Metal / Quality",    keywords: ["metal","qly","quality","karat","kt","purity"] },
-  { key: "grossWeightCol",  label: "Gross Weight",       keywords: ["gr wt","gross wt","gross weight","g.wt","gwt"] },
-  { key: "netWeightCol",    label: "Net Weight",         keywords: ["net wt","net weight","n.wt","nwt"] },
-  { key: "fgWeightCol",     label: "FG / Stone Weight",  keywords: ["fg wt","fg weight","stone wt","fg","f.g"] },
-  { key: "goldRateCol",     label: "Gold Rate",          keywords: ["gold rate","metal rate","rate/g","rate per g"] },
-  { key: "goldAmtCol",      label: "Gold Amount",        keywords: ["gold amt","metal amt","gold amount"] },
-  { key: "diamondShapeCol", label: "Diamond Shape",      keywords: ["shape","stone type","stone shape","stone name","dia shape"] },
-  { key: "diamondSizeCol",  label: "Size / Grade",       keywords: ["size","grade","colour","color"] },
-  { key: "diamondPcsCol",   label: "Diamond Pcs",        keywords: ["pcs","pieces","no. of pcs","qty","count"] },
-  { key: "diamondWeightCol",label: "Diamond Weight (ct)",keywords: ["wts","stone wt","dia wt","carats","cts"] },
-  { key: "diamondRateCol",  label: "Diamond Rate",       keywords: ["dia rate","stone rate","rate per ct","diamond rate"] },
-  { key: "handlingRateCol", label: "Handling Rate",      keywords: ["handling rate","hdl rate","handling","service rate"] },
-  { key: "handlingAmtCol",  label: "Handling Amount",    keywords: ["handling amt","hdl amt","handling amount","service amt"] },
-  { key: "makingRateCol",   label: "Making Rate",        keywords: ["making rate","labour rate","making","labour"] },
-  { key: "makingAmtCol",    label: "Making Amount",      keywords: ["making amt","labour amt","making amount"] },
-  { key: "finalAmtCol",     label: "Final Amount (₹)",   keywords: ["rs.","final amt","total","amount","net amt","value"] },
-];
-
-function detectHeaderRow(rows) {
-  const triggers = ["sr","item no","design","gr wt","gross","net wt","making","shape","item_no","style"];
-  for (let i = 0; i < Math.min(rows.length, 25); i++) {
-    const rowText = rows[i].map(c => String(c || "").toLowerCase()).join(" ");
-    if (triggers.filter(t => rowText.includes(t)).length >= 2) return i;
-  }
-  return -1;
-}
-
-function autoDetectMapping(headerCells) {
-  const mapping = {};
-  const usedCols = new Set();
-  for (const field of COSTING_FIELDS) {
-    for (let ci = 0; ci < headerCells.length; ci++) {
-      if (usedCols.has(ci)) continue;
-      const cell = String(headerCells[ci] || "").toLowerCase().trim();
-      if (field.keywords.some(kw => cell.includes(kw))) {
-        mapping[field.key] = ci;
-        usedCols.add(ci);
-        break;
-      }
-    }
-    if (mapping[field.key] == null) mapping[field.key] = null;
-  }
-  return mapping;
-}
-
-function extractInvoiceMeta(rows, headerRow) {
-  let invoiceNo = "", invoiceDate = "", partyName = "";
-  for (let i = 0; i < headerRow; i++) {
-    const row = rows[i].map(c => String(c || "").toLowerCase());
-    const raw = rows[i].map(c => String(c || "").trim());
-    for (let ci = 0; ci < row.length; ci++) {
-      if (row[ci].includes("party name") || row[ci].includes("party")) {
-        for (let j = ci+1; j < raw.length; j++) { if (raw[j]) { partyName = raw[j]; break; } }
-      }
-      if (row[ci].includes("packing list no") || row[ci].includes("invoice no") || row[ci].includes("est") || row[ci].includes("list no")) {
-        const m = raw[ci].match(/[A-Z]{2,}\d{4,}/) || raw.slice(ci).find(v => /[A-Z]{2,}\d{4,}/.test(v));
-        if (m) invoiceNo = typeof m === "string" ? m : m[0];
-        for (let j = ci+1; j < raw.length; j++) { if (raw[j] && /[A-Z0-9]{4,}/.test(raw[j])) { invoiceNo = invoiceNo || raw[j]; break; } }
-      }
-      if (row[ci].includes("date")) {
-        for (let j = ci+1; j < raw.length; j++) { if (raw[j]) { invoiceDate = raw[j]; break; } }
-      }
-    }
-  }
-  return { invoiceNo, invoiceDate, partyName };
-}
-
-function parsePackingList(rows, mapping, meta) {
-  const m = mapping;
-  const items = [];
-  let current = null;
-
-  const val = (row, col) => col != null && col < row.length ? (row[col] === "" ? null : row[col]) : null;
-  const num = (row, col) => { const v = val(row, col); return v != null ? parseFloat(v) || 0 : 0; };
-  const str = (row, col) => { const v = val(row, col); return v != null ? String(v).trim() : ""; };
-
-  for (const row of rows) {
-    const srVal = str(row, m.srCol);
-    const shapeVal = str(row, m.diamondShapeCol);
-    const isStop = row.some(c => /^total$/i.test(String(c||"").trim()) || /gross amount/i.test(String(c||"").trim()));
-    if (isStop) break;
-
-    if (srVal && /^\d+$/.test(srVal.trim())) {
-      // New item row
-      if (current) items.push(current);
-      const diamondRow = shapeVal ? [{
-        shape: shapeVal, size: str(row, m.diamondSizeCol),
-        pcs: num(row, m.diamondPcsCol), weight: num(row, m.diamondWeightCol),
-        diamondRate: num(row, m.diamondRateCol),
-        handlingRate: num(row, m.handlingRateCol), handlingAmt: num(row, m.handlingAmtCol),
-      }] : [];
-      current = {
-        itemNo: str(row, m.itemNoCol), itemName: str(row, m.itemNameCol),
-        metal: str(row, m.metalCol),
-        grossWeight: num(row, m.grossWeightCol), netWeight: num(row, m.netWeightCol), fgWeight: num(row, m.fgWeightCol),
-        goldRate: num(row, m.goldRateCol), goldAmt: num(row, m.goldAmtCol),
-        diamonds: diamondRow,
-        makingRate: num(row, m.makingRateCol), makingAmt: num(row, m.makingAmtCol),
-        vendorTotal: num(row, m.finalAmtCol),
-        invoiceNo: meta.invoiceNo, invoiceDate: meta.invoiceDate, partyName: meta.partyName,
-        actualDiamondRate: 0, otherCharges: 0, otherChargesNote: "",
-        parsedAt: new Date().toISOString(),
-      };
-    } else if (current && shapeVal) {
-      // Continuation row — extra diamond
-      current.diamonds.push({
-        shape: shapeVal, size: str(row, m.diamondSizeCol),
-        pcs: num(row, m.diamondPcsCol), weight: num(row, m.diamondWeightCol),
-        diamondRate: num(row, m.diamondRateCol),
-        handlingRate: num(row, m.handlingRateCol), handlingAmt: num(row, m.handlingAmtCol),
-      });
-    }
-  }
-  if (current) items.push(current);
-  return items;
-}
 
 // ── Password Modal ────────────────────────────────────────────
 function PasswordModal({ onSubmit, onCancel, error }) {
@@ -2152,160 +2030,6 @@ function MemoTab({ memo, onClose, onSelect, onRestore, onDelete }) {
   );
 }
 
-// ── Invoice Uploader ───────────────────────────────────────────
-function InvoiceUploader({ items, costing, vendorProfiles, onClose, onImport, onSaveProfile }) {
-  const [step, setStep] = useState("pick"); // pick | map | preview
-  const [rows, setRows] = useState([]);
-  const [headerRow, setHeaderRow] = useState(-1);
-  const [mapping, setMapping] = useState({});
-  const [meta, setMeta] = useState({});
-  const [parsed, setParsed] = useState([]);
-  const [profileName, setProfileName] = useState("");
-  const [saving, setSaving] = useState(false);
-  const stockItemNos = new Set(items.map(i => String(i.item_no || "")).filter(Boolean));
-  const profileKeys = Object.keys(vendorProfiles);
-  const colLetters = (n) => String.fromCharCode(65 + n);
-  const fmt = n => "₹" + Math.round(n||0).toLocaleString("en-IN");
-
-  function handleFile(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const wb = XLSX.read(new Uint8Array(ev.target.result), { type: "array" });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-      setRows(rawRows);
-      const hRow = detectHeaderRow(rawRows);
-      setHeaderRow(hRow);
-      if (hRow >= 0) {
-        const detected = autoDetectMapping(rawRows[hRow]);
-        setMapping(detected);
-        setMeta(extractInvoiceMeta(rawRows, hRow));
-      }
-      setStep("map");
-    };
-    reader.readAsArrayBuffer(file);
-  }
-
-  function applyProfile(key) {
-    if (!key || !vendorProfiles[key]) return;
-    const p = vendorProfiles[key];
-    setMapping({ ...p });
-    setProfileName(p.name || "");
-  }
-
-  function doParse() {
-    const dataRows = rows.slice(headerRow + 1);
-    const result = parsePackingList(dataRows, mapping, meta);
-    setParsed(result);
-    setStep("preview");
-  }
-
-  async function doImport() {
-    setSaving(true);
-    for (const item of parsed) {
-      await onImport(item);
-    }
-    setSaving(false);
-    onClose();
-  }
-
-  async function handleSaveProfile() {
-    if (!profileName.trim()) return;
-    const profile = { ...mapping, name: profileName.trim(), headerRow };
-    await onSaveProfile(profile);
-  }
-
-  const inp = { background: "var(--c-tx-bg2)", border: "1px solid var(--c-tx-border)", borderRadius: 6, color: "var(--c-text)", fontSize: 12, padding: "5px 8px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" };
-
-  return React.createElement('div', { style: { minHeight: "100vh", background: "var(--c-bg)", color: "var(--c-text)", fontFamily: "'Palatino Linotype','Book Antiqua',Palatino,serif", display: "flex", flexDirection: "column" } }
-    , React.createElement('div', { style: { background: "var(--c-tx-bg)", borderBottom: "1px solid var(--c-tx-border)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 10, position: "sticky", top: 0, zIndex: 10 } }
-      , React.createElement('button', { onClick: onClose, style: { background: "var(--c-tx-btn)", border: "1px solid var(--c-tx-border)", borderRadius: 8, color: "var(--c-tx-text)", padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" } }, "← Back")
-      , React.createElement('div', { style: { flex: 1 } }
-        , React.createElement('div', { style: { fontSize: 9, color: "var(--c-tx-text2)", letterSpacing: 3, fontWeight: 700 } }, "VENDOR INVOICE")
-        , React.createElement('div', { style: { fontSize: 16, color: "var(--c-tx-text)", fontWeight: 800 } }, "📦 Upload Packing List")
-      )
-    )
-    , React.createElement('div', { style: { flex: 1, overflowY: "auto", padding: 16 } }
-
-      /* Step: pick file */
-      , step === "pick" && React.createElement('div', { style: { textAlign: "center", padding: "40px 16px" } }
-        , React.createElement('div', { style: { fontSize: 48, marginBottom: 16 } }, "📄")
-        , React.createElement('div', { style: { fontSize: 14, color: "var(--c-text-sub)", marginBottom: 24 } }, "Select a vendor packing list (.xlsx or .xls)")
-        , React.createElement('label', { style: { display: "inline-block", background: "var(--c-tx-btn2)", border: "1px solid var(--c-tx-border)", borderRadius: 10, color: "var(--c-tx-text)", padding: "12px 24px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" } }
-          , "Choose File"
-          , React.createElement('input', { type: "file", accept: ".xlsx,.xls", onChange: handleFile, style: { display: "none" } })
-        )
-      )
-
-      /* Step: column mapping */
-      , step === "map" && React.createElement('div', null
-        , React.createElement('div', { style: { fontSize: 12, color: "var(--c-text-sub)", marginBottom: 12 } }, headerRow >= 0 ? `Header detected at row ${headerRow + 1}` : "⚠ Header not auto-detected — set manually")
-
-        /* Vendor profile */
-        , React.createElement('div', { style: { background: "var(--c-bg-panel)", border: "1px solid var(--c-border)", borderRadius: 10, padding: 12, marginBottom: 14 } }
-          , React.createElement('div', { style: { fontSize: 10, color: "var(--c-text-dim)", letterSpacing: 2, fontWeight: 700, marginBottom: 8 } }, "VENDOR PROFILE")
-          , React.createElement('div', { style: { display: "flex", gap: 8, marginBottom: 8 } }
-            , React.createElement('select', { onChange: e => applyProfile(e.target.value), style: { ...inp, flex: 1 } }
-              , React.createElement('option', { value: "" }, "— Load saved profile —")
-              , profileKeys.map(k => React.createElement('option', { key: k, value: k }, vendorProfiles[k].name || k))
-            )
-          )
-          , React.createElement('div', { style: { display: "flex", gap: 8 } }
-            , React.createElement('input', { value: profileName, onChange: e => setProfileName(e.target.value), placeholder: "Profile name (e.g. TJ)", style: { ...inp, flex: 1 } })
-            , React.createElement('button', { onClick: handleSaveProfile, style: { background: "var(--c-bg-btn2)", border: "1px solid var(--c-border2)", borderRadius: 6, color: "var(--c-text-dim)", padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" } }, "Save Profile")
-          )
-        )
-
-        /* Column mapping table */
-        , React.createElement('div', { style: { background: "var(--c-bg-panel)", border: "1px solid var(--c-border)", borderRadius: 10, padding: 12, marginBottom: 14 } }
-          , React.createElement('div', { style: { fontSize: 10, color: "var(--c-text-dim)", letterSpacing: 2, fontWeight: 700, marginBottom: 10 } }, "COLUMN MAPPING")
-          , COSTING_FIELDS.map(field => React.createElement('div', { key: field.key, style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7, gap: 8 } }
-            , React.createElement('div', { style: { fontSize: 12, color: "var(--c-text-sub)", flex: 1 } }, field.label)
-            , React.createElement('select', { value: mapping[field.key] != null ? mapping[field.key] : "", onChange: e => setMapping(m => ({ ...m, [field.key]: e.target.value === "" ? null : parseInt(e.target.value) })), style: { ...inp, width: 110 } }
-              , React.createElement('option', { value: "" }, "— skip —")
-              , Array.from({ length: 35 }, (_, i) => React.createElement('option', { key: i, value: i }, `${colLetters(i)} (col ${i + 1})`))
-            )
-          ))
-        )
-
-        /* Header row selector */
-        , React.createElement('div', { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 14 } }
-          , React.createElement('div', { style: { fontSize: 12, color: "var(--c-text-sub)" } }, "Header at row:")
-          , React.createElement('input', { type: "number", value: headerRow + 1, min: 1, onChange: e => setHeaderRow(parseInt(e.target.value) - 1), style: { ...inp, width: 60 } })
-        )
-
-        , React.createElement('button', { onClick: doParse, style: { width: "100%", background: "var(--c-tx-btn2)", border: "1px solid var(--c-tx-border)", borderRadius: 10, color: "var(--c-tx-text)", padding: "12px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" } }, "Next → Parse")
-      )
-
-      /* Step: preview */
-      , step === "preview" && React.createElement('div', null
-        , meta.invoiceNo && React.createElement('div', { style: { background: "var(--c-bg-panel)", border: "1px solid var(--c-border)", borderRadius: 10, padding: 12, marginBottom: 14 } }
-          , React.createElement('div', { style: { fontSize: 12, color: "var(--c-text-h)", fontWeight: 700 } }, meta.partyName || "Vendor Invoice")
-          , React.createElement('div', { style: { fontSize: 11, color: "var(--c-text-dim)", marginTop: 4 } }, meta.invoiceNo, meta.invoiceDate ? ` · ${meta.invoiceDate}` : "")
-        )
-        , parsed.map((item, idx) => {
-          const matched = stockItemNos.has(String(item.itemNo));
-          return React.createElement('div', { key: idx, style: { background: "var(--c-bg-panel)", border: `1px solid ${matched ? "var(--c-tx-border)" : "var(--c-amb-border)"}`, borderRadius: 10, padding: 12, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" } }
-            , React.createElement('div', null
-              , React.createElement('div', { style: { fontSize: 13, color: "var(--c-text-h)", fontWeight: 700 } }, item.itemNo, item.itemName ? ` · ${item.itemName}` : "")
-              , React.createElement('div', { style: { fontSize: 11, color: "var(--c-text-dim)", marginTop: 2 } }, item.metal, item.goldRate ? ` · ₹${item.goldRate}/g` : "", ` · ${item.diamonds.length} diamond row${item.diamonds.length !== 1 ? "s" : ""}`)
-            )
-            , React.createElement('div', { style: { textAlign: "right" } }
-              , React.createElement('div', { style: { fontSize: 14, color: "var(--c-tx-text)", fontWeight: 800 } }, fmt(item.vendorTotal))
-              , React.createElement('div', { style: { fontSize: 10, color: matched ? "var(--c-tx-text)" : "var(--c-amb-text)", marginTop: 2 } }, matched ? "✅ Matched" : "⚠ Not in stock")
-            )
-          );
-        })
-        , parsed.length === 0 && React.createElement('div', { style: { textAlign: "center", color: "var(--c-text-dim)", padding: 40 } }, "No items parsed. Check column mapping and header row.")
-        , parsed.length > 0 && React.createElement('button', { onClick: doImport, disabled: saving, style: { width: "100%", marginTop: 8, background: "var(--c-tx-btn2)", border: "1px solid var(--c-tx-border)", borderRadius: 10, color: "var(--c-tx-text)", padding: "14px", fontSize: 14, fontWeight: 700, cursor: saving ? "default" : "pointer", fontFamily: "inherit", opacity: saving ? 0.6 : 1 } }, saving ? "Importing…" : `Import ${parsed.length} Item${parsed.length !== 1 ? "s" : ""}`)
-        , React.createElement('button', { onClick: () => setStep("map"), style: { width: "100%", marginTop: 8, background: "transparent", border: "1px solid var(--c-border)", borderRadius: 10, color: "var(--c-text-dim)", padding: "10px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" } }, "← Back to Mapping")
-      )
-    )
-  );
-}
-
 // ── Costing View ───────────────────────────────────────────────
 function CostingView({ item, costing: initCosting, onClose, onSave }) {
   const blank = { itemNo: item?.item_no || "", itemName: item?.name || "", invoiceNo: "", invoiceDate: "", partyName: "", vendorProfile: "", metal: "", grossWeight: 0, netWeight: 0, fgWeight: 0, goldRate: 0, goldAmt: 0, diamonds: [], makingRate: 0, makingAmt: 0, actualDiamondRate: 0, otherCharges: 0, otherChargesNote: "", vendorTotal: 0 };
@@ -2513,9 +2237,7 @@ function StockAnalyzer() {
   const [showMemo, setShowMemo] = useState(false);
   const [memo, setMemo] = useState([]);
   const [selectedMemo, setSelectedMemo] = useState(null);
-  const [showInvoice, setShowInvoice] = useState(false);
   const [costing, setCosting] = useState({});
-  const [vendorProfiles, setVendorProfiles] = useState({});
   const [costingItem, setCostingItem] = useState(null);
   const [activeForm, setActiveForm] = useState(null); // "customer"|"repair"|"purchase"
   const [editRecord, setEditRecord] = useState(null); // fn to call after unlock
@@ -2530,7 +2252,6 @@ function StockAnalyzer() {
   const FB_PURCHASES = "https://ads-automation-d9560-default-rtdb.asia-southeast1.firebasedatabase.app/curio-purchases";
   const FB_MEMO = "https://ads-automation-d9560-default-rtdb.asia-southeast1.firebasedatabase.app/curio-memo";
   const FB_COSTING = "https://ads-automation-d9560-default-rtdb.asia-southeast1.firebasedatabase.app/curio-costing";
-  const FB_VENDOR_PROFILES = "https://ads-automation-d9560-default-rtdb.asia-southeast1.firebasedatabase.app/curio-vendor-profiles";
 
   // ── Firebase helpers ──────────────────────────────────────────
   const fbUrl = p => p ? `${FB}/${p}.json` : `${FB}.json`;
@@ -2693,7 +2414,6 @@ function StockAnalyzer() {
 
   // ── Costing helpers ───────────────────────────────────────────
   const fbCostUrl = id => id ? `${FB_COSTING}/${id}.json` : `${FB_COSTING}.json`;
-  const fbVpUrl   = n  => n  ? `${FB_VENDOR_PROFILES}/${n}.json` : `${FB_VENDOR_PROFILES}.json`;
   async function loadCosting() {
     try {
       const r = await fetch(fbCostUrl(null));
@@ -2704,17 +2424,6 @@ function StockAnalyzer() {
     const key = String(itemNo).replace(/[.#$/\[\]]/g, "_");
     await fetch(fbCostUrl(key), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
     setCosting(prev => ({ ...prev, [key]: data }));
-  }
-  async function loadVendorProfiles() {
-    try {
-      const r = await fetch(fbVpUrl(null));
-      if (r.ok) { const d = await r.json(); if (d) setVendorProfiles(d); }
-    } catch (e) {}
-  }
-  async function saveVendorProfile(profile) {
-    const key = profile.name.replace(/[.#$/\[\] ]/g, "_");
-    await fetch(fbVpUrl(key), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(profile) });
-    setVendorProfiles(prev => ({ ...prev, [key]: profile }));
   }
 
   // ── Memo helpers ──────────────────────────────────────────────
@@ -2847,7 +2556,6 @@ function StockAnalyzer() {
       await loadPurchases();
       await loadMemo();
       await loadCosting();
-      await loadVendorProfiles();
       setSyncing(false);
       setFbError(null);
     }).catch(err => {
@@ -3332,11 +3040,10 @@ function StockAnalyzer() {
       , selectedMemo && React.createElement(ItemDetail, { item: selectedMemo, goldRate: goldRate, silverRate: silverRate, onBack: () => setSelectedMemo(null), onSave: () => {}, onDelete: handleDeleteMemo, memoMode: true, onMemoRestore: handleRestoreFromMemo, photos: photos, onSavePhoto: handleSavePhoto, requireAuth: requireAuth,} )
       , showMemo && !selectedMemo && React.createElement(MemoTab, { memo: memo, onClose: () => setShowMemo(false), onSelect: item => setSelectedMemo(item), onRestore: item => handleRestoreFromMemo(item), onDelete: memoId => deleteMemoItem(memoId),} )
       , showAdd && !showSales && !showSellForm && React.createElement(AddItem, { onSave: handleAdd, onCancel: () => setShowAdd(false), existingItems: items, goldRate: goldRate, labourRate: labourRate,} )
-      , showInvoice && React.createElement(InvoiceUploader, { items, costing, vendorProfiles, onClose: () => setShowInvoice(false), onSaveProfile: saveVendorProfile, onImport: async data => { await saveItemCosting(String(data.itemNo), data); },} )
-      , costingItem && !showInvoice && React.createElement(CostingView, { item: costingItem, costing: costing[String(costingItem.item_no || "").replace(/[.#$/\[\]]/g, "_")] || {}, onClose: () => setCostingItem(null), onSave: async d => { await saveItemCosting(String(costingItem.item_no), d); },} )
-      , selected && !showAdd && !showSales && !showSellForm && !showInvoice && !costingItem && React.createElement(ItemDetail, { item: selected, goldRate: goldRate, silverRate: silverRate, onBack: () => setSelected(null), onSave: handleSave, onDelete: handleDelete, photos: photos, onSavePhoto: handleSavePhoto, requireAuth: requireAuth, onSell: item => { setSellItem(item); setShowSellForm(true); }, onMemo: handleMemo, onCosting: item => setCostingItem(item), hasCosting: !!costing[String(selected.item_no || "").replace(/[.#$/\[\]]/g, "_")],} )
+      , costingItem && React.createElement(CostingView, { item: costingItem, costing: costing[String(costingItem.item_no || "").replace(/[.#$/\[\]]/g, "_")] || {}, onClose: () => setCostingItem(null), onSave: async d => { await saveItemCosting(String(costingItem.item_no), d); },} )
+      , selected && !showAdd && !showSales && !showSellForm && !costingItem && React.createElement(ItemDetail, { item: selected, goldRate: goldRate, silverRate: silverRate, onBack: () => setSelected(null), onSave: handleSave, onDelete: handleDelete, photos: photos, onSavePhoto: handleSavePhoto, requireAuth: requireAuth, onSell: item => { setSellItem(item); setShowSellForm(true); }, onMemo: handleMemo, onCosting: item => setCostingItem(item), hasCosting: !!costing[String(selected.item_no || "").replace(/[.#$/\[\]]/g, "_")],} )
 
-      , React.createElement('div', { style: { display: (selected || showAdd || showSales || showSellForm || showCustomers || showRepairs || showPurchases || showReports || showMemo || !!selectedMemo || showInvoice || !!costingItem) ? "none" : "flex", minHeight: "100vh", background: "var(--c-bg)", color: "var(--c-text)", fontFamily: "'Palatino Linotype','Book Antiqua',Palatino,serif", flexDirection: "column" },}
+      , React.createElement('div', { style: { display: (selected || showAdd || showSales || showSellForm || showCustomers || showRepairs || showPurchases || showReports || showMemo || !!selectedMemo || !!costingItem) ? "none" : "flex", minHeight: "100vh", background: "var(--c-bg)", color: "var(--c-text)", fontFamily: "'Palatino Linotype','Book Antiqua',Palatino,serif", flexDirection: "column" },}
       /* Header */
       , React.createElement('div', { style: { background: "var(--c-bg-header)", borderBottom: "1px solid var(--c-border)", padding: "16px 16px 12px" },}
         , React.createElement('div', { style: { display: "flex", justifyContent: "space-between", alignItems: "center" },}
@@ -3374,7 +3081,6 @@ function StockAnalyzer() {
         , React.createElement('button', { onClick: () => setShowRepairs(true), style: { background: "var(--c-gold-bg)", border: "1px solid var(--c-amb-border)", borderRadius: 6, color: "var(--c-amb-text)", padding: "5px 11px", fontSize: 11, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, letterSpacing: 1, flexShrink: 0, whiteSpace: "nowrap" },}, "🔧 REPAIRS" )
         , React.createElement('button', { onClick: () => setShowPurchases(true), style: { background: "var(--c-blue-bg)", border: "1px solid var(--c-blue-brd)", borderRadius: 6, color: "var(--c-blue-text)", padding: "5px 11px", fontSize: 11, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, letterSpacing: 1, flexShrink: 0, whiteSpace: "nowrap" },}, "📦 BUYS" )
         , React.createElement('button', { onClick: () => setShowMemo(true), style: { background: "var(--c-bg-panel)", border: "1px solid var(--c-border2)", borderRadius: 6, color: "var(--c-text-dim)", padding: "5px 11px", fontSize: 11, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, letterSpacing: 1, flexShrink: 0, whiteSpace: "nowrap" },}, "📋 MEMO" )
-        , React.createElement('button', { onClick: () => requireAuth(() => setShowInvoice(true)), style: { background: "var(--c-bg-panel)", border: "1px solid var(--c-border2)", borderRadius: 6, color: "var(--c-text-dim)", padding: "5px 11px", fontSize: 11, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, letterSpacing: 1, flexShrink: 0, whiteSpace: "nowrap" },}, "📦 COSTS" )
         , React.createElement('button', { onClick: () => setShowReports(true), style: { background: "var(--c-bg-header)", border: "1px solid var(--c-border)", borderRadius: 6, color: "var(--c-text-dim)", padding: "5px 11px", fontSize: 11, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, letterSpacing: 1, flexShrink: 0, whiteSpace: "nowrap" },}, "📊 REPORTS" )
         , React.createElement('button', { onClick: exportInventory, style: { background: "var(--c-bg-panel)", border: "1px solid var(--c-border)", borderRadius: 6, color: "var(--c-text-dim)", padding: "5px 11px", fontSize: 11, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, letterSpacing: 1, flexShrink: 0, whiteSpace: "nowrap" },}, "↓ CSV" )
         , React.createElement('div', { style: { flex: 1 },} )
