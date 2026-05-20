@@ -1605,9 +1605,9 @@ function Dashboard({ items, goldRate }) {
 
   // ── Compute all metrics live ──────────────────────────────────
   const metrics = (() => {
-    let sellTotal = 0, gold14 = 0, gold18 = 0, gold24 = 0;
+    let sellTotal = 0, gold9 = 0, gold14 = 0, gold18 = 0, gold24 = 0;
     let polki = 0, diamond = 0, stone = 0, labour = 0, other = 0;
-    let gold14g = 0, gold18g = 0, gold24g = 0;
+    let gold9g = 0, gold14g = 0, gold18g = 0, gold24g = 0;
     const byKind = { ring: 0, earring: 0, bracelet: 0, necklace: 0 };
 
     items.forEach(item => {
@@ -1623,7 +1623,8 @@ function Dashboard({ items, goldRate }) {
           const ratio = r / BASE_24K;
           if (ratio > 0.9) { gold24 += p; gold24g += (c.weight || 0); }
           else if (ratio > 0.7) { gold18 += p; gold18g += (c.weight || 0); }
-          else { gold14 += p; gold14g += (c.weight || 0); }
+          else if (ratio > 0.5) { gold14 += p; gold14g += (c.weight || 0); }
+          else { gold9 += p; gold9g += (c.weight || 0); }
         } else if (c.category === "polki")   polki    += p;
         else if (c.category === "diamond")   diamond  += p;
         else if (c.category === "stone")     stone    += p;
@@ -1632,15 +1633,15 @@ function Dashboard({ items, goldRate }) {
       });
     });
 
-    const totalGold = gold14 + gold18 + gold24;
+    const totalGold = gold9 + gold14 + gold18 + gold24;
     const costPrice = sellTotal * 0.80;
     const margin    = sellTotal - costPrice;
     const goldPct   = totalGold / sellTotal * 100;
     const diamondPct= diamond   / sellTotal * 100;
     const polkiPct  = polki     / sellTotal * 100;
 
-    return { sellTotal, costPrice, margin, totalGold, gold14, gold18, gold24,
-             gold14g, gold18g, gold24g, polki, diamond, stone, labour, other,
+    return { sellTotal, costPrice, margin, totalGold, gold9, gold14, gold18, gold24,
+             gold9g, gold14g, gold18g, gold24g, polki, diamond, stone, labour, other,
              goldPct, diamondPct, polkiPct, byKind, itemCount: items.length };
   })();
 
@@ -1707,9 +1708,11 @@ function Dashboard({ items, goldRate }) {
             , React.createElement(Tile, { label: "18K Gold" , value: fmtCr(metrics.gold18),
               sub: `${metrics.gold18g.toFixed(1)} g`, color: "#b08018", bg: "#1c1606", border: "#503a10",} )
           )
-          , metrics.gold24 > 0 && (
+          , (metrics.gold9 > 0 || metrics.gold24 > 0) && (
             React.createElement('div', { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 },}
-              , React.createElement(Tile, { label: "14K Gold" , value: fmtCr(metrics.gold24),
+              , metrics.gold9 > 0 && React.createElement(Tile, { label: "9KT Gold", value: fmtCr(metrics.gold9),
+                sub: `${metrics.gold9g.toFixed(1)} g`, color: "#a07828", bg: "#181000", border: "#503808",} )
+              , metrics.gold24 > 0 && React.createElement(Tile, { label: "24K Gold" , value: fmtCr(metrics.gold24),
                 sub: `${metrics.gold24g.toFixed(1)} g`, color: "#ffd060", bg: "#201808", border: "#604010",} )
             )
           )
@@ -2031,7 +2034,7 @@ function MemoTab({ memo, onClose, onSelect, onRestore, onDelete }) {
 }
 
 // ── Costing View ───────────────────────────────────────────────
-function CostingView({ item, costing: initCosting, onClose, onSave }) {
+function CostingView({ item, costing: initCosting, onClose, onSave, goldRate }) {
   const blank = { itemNo: item?.item_no || "", itemName: item?.name || "", invoiceNo: "", invoiceDate: "", partyName: "", vendorProfile: "", metal: "", grossWeight: 0, netWeight: 0, fgWeight: 0, goldRate: 0, goldAmt: 0, diamonds: [], makingRate: 0, makingAmt: 0, actualDiamondRate: 0, otherCharges: 0, otherChargesNote: "", vendorTotal: 0 };
   const [d, setD] = useState({ ...blank, ...initCosting });
   const [saving, setSaving] = useState(false);
@@ -2050,7 +2053,7 @@ function CostingView({ item, costing: initCosting, onClose, onSave }) {
   }, 0);
   const totalCost = (parseFloat(d.goldAmt)||0) + totalHandling + (parseFloat(d.makingAmt)||0) + actualDiaCost + (parseFloat(d.otherCharges)||0);
   const diff = totalCost - (parseFloat(d.vendorTotal)||0);
-  const stockPrice = parseFloat(item?.total) || 0;
+  const stockPrice = item ? liveItemTotal(item, goldRate || BASE_24K) : (parseFloat(item?.total) || 0);
   const profit = stockPrice - totalCost;
   const markupPct = totalCost > 0 ? (profit / totalCost) * 100 : 0;
   const marginPct = stockPrice > 0 ? (profit / stockPrice) * 100 : 0;
@@ -3040,7 +3043,7 @@ function StockAnalyzer() {
       , selectedMemo && React.createElement(ItemDetail, { item: selectedMemo, goldRate: goldRate, silverRate: silverRate, onBack: () => setSelectedMemo(null), onSave: () => {}, onDelete: handleDeleteMemo, memoMode: true, onMemoRestore: handleRestoreFromMemo, photos: photos, onSavePhoto: handleSavePhoto, requireAuth: requireAuth,} )
       , showMemo && !selectedMemo && React.createElement(MemoTab, { memo: memo, onClose: () => setShowMemo(false), onSelect: item => setSelectedMemo(item), onRestore: item => handleRestoreFromMemo(item), onDelete: memoId => deleteMemoItem(memoId),} )
       , showAdd && !showSales && !showSellForm && React.createElement(AddItem, { onSave: handleAdd, onCancel: () => setShowAdd(false), existingItems: items, goldRate: goldRate, labourRate: labourRate,} )
-      , costingItem && React.createElement(CostingView, { item: costingItem, costing: costing[String(costingItem.item_no || "").replace(/[.#$/\[\]]/g, "_")] || {}, onClose: () => setCostingItem(null), onSave: async d => { await saveItemCosting(String(costingItem.item_no), d); },} )
+      , costingItem && React.createElement(CostingView, { item: costingItem, costing: costing[String(costingItem.item_no || "").replace(/[.#$/\[\]]/g, "_")] || {}, onClose: () => setCostingItem(null), onSave: async d => { await saveItemCosting(String(costingItem.item_no), d); }, goldRate: goldRate,} )
       , selected && !showAdd && !showSales && !showSellForm && !costingItem && React.createElement(ItemDetail, { item: selected, goldRate: goldRate, silverRate: silverRate, onBack: () => setSelected(null), onSave: handleSave, onDelete: handleDelete, photos: photos, onSavePhoto: handleSavePhoto, requireAuth: requireAuth, onSell: item => { setSellItem(item); setShowSellForm(true); }, onMemo: handleMemo, onCosting: item => setCostingItem(item), hasCosting: !!costing[String(selected.item_no || "").replace(/[.#$/\[\]]/g, "_")],} )
 
       , React.createElement('div', { style: { display: (selected || showAdd || showSales || showSellForm || showCustomers || showRepairs || showPurchases || showReports || showMemo || !!selectedMemo || !!costingItem) ? "none" : "flex", minHeight: "100vh", background: "var(--c-bg)", color: "var(--c-text)", fontFamily: "'Palatino Linotype','Book Antiqua',Palatino,serif", flexDirection: "column" },}
